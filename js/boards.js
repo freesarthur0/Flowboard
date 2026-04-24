@@ -288,7 +288,15 @@ async function deleteBoard(id) {
 function onColDragStart(e, colId) {
   if (e.target.closest('.card') || e.target.closest('.cbtn') || e.target.closest('.col-plus') || e.target.closest('.col-menu-btn')) { e.preventDefault(); return; }
   dragColId = colId;
-  setTimeout(() => { const el = document.getElementById('d-col-' + colId); if (el) el.classList.add('dragging-col'); }, 0);
+  const col = (getActiveCols() || []).find(c => c.col_id === colId);
+  const label = col ? col.label : '';
+  const color = col ? col.color : '#888';
+  const ghost = document.createElement('div');
+  ghost.textContent = label;
+  ghost.style.cssText = `position:absolute;top:-1000px;left:-1000px;padding:8px 14px;background:var(--bg2,#222);color:${color};border:1px solid ${color};border-radius:8px;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;font-family:inherit;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,0.4);`;
+  document.body.appendChild(ghost);
+  e.dataTransfer.setDragImage(ghost, 20, 16);
+  setTimeout(() => { ghost.remove(); const el = document.getElementById('d-col-' + colId); if (el) el.classList.add('dragging-col'); }, 0);
   e.dataTransfer.effectAllowed = 'move';
 }
 function onColDragEnd() {
