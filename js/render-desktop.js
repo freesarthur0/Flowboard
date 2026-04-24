@@ -74,6 +74,8 @@ function setDView(v) {
     const tab = document.getElementById(`d-tab-${vv}`);
     if (tab) tab.classList.toggle('active', vv === v);
   });
+  // Modo imersivo para Anotações: esconde stats strip, filter bar, painel direito e remove padding
+  document.body.classList.toggle('notes-immersive', v === 'notes');
   // View entrance animation
   const enterEl = document.getElementById('d-' + v + '-view');
   if (enterEl) { enterEl.classList.remove('view-entering'); void enterEl.offsetWidth; enterEl.classList.add('view-entering'); }
