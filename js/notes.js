@@ -267,7 +267,7 @@ function treeNodeHTML(node, isRoot) {
       <span class="obsd-tree-icon">${open
         ? '<svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24"><path d="M19 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 3h8a2 2 0 0 1 2 2v9z"/></svg>'
         : '<svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'}</span>
-      <span class="obsd-tree-label">${esc(name)} <span style="color:var(--obsd-text3);font-size:10px">(${count})</span></span>
+      <span class="obsd-tree-label">${esc(name)} <span style="color:var(--text3);font-size:10px">(${count})</span></span>
       <span class="obsd-folder-actions">
         <button onclick="event.stopPropagation();createNote('${esc(path)}')" title="Nova nota aqui">＋</button>
         <button onclick="event.stopPropagation();renameFolder('${esc(path)}')" title="Renomear">✎</button>
@@ -482,7 +482,7 @@ function renderTagCloud() {
   if (!allTags.length) { el.innerHTML = '<div class="obsd-outline-empty">Sem tags.</div>'; return; }
   el.innerHTML = allTags.map(t => {
     const active = noteFilter.tags.includes(t);
-    return `<span class="obsd-tag" style="${active ? 'background:var(--obsd-accent);color:#fff' : ''}" onclick="toggleNoteTagFilter('${esc(t)}')">#${esc(t)}</span>`;
+    return `<span class="obsd-tag" style="${active ? 'background:var(--accent);color:#fff' : ''}" onclick="toggleNoteTagFilter('${esc(t)}')">#${esc(t)}</span>`;
   }).join('');
 }
 
