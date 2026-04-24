@@ -53,6 +53,23 @@ function initRealtime() {
       if (activeBoardId === board.id) activeBoardId = boards[0]?.id || null;
       render();
     })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notes' }, ({ new: note }) => {
+      if (notes.find(n => n.id === note.id)) return;
+      notes.unshift(note);
+      if (dView === 'notes' || mView === 'notes') renderNotes();
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notes' }, ({ new: note }) => {
+      const idx = notes.findIndex(n => n.id === note.id);
+      if (idx === -1) { notes.unshift(note); }
+      else { notes[idx] = { ...notes[idx], ...note }; }
+      if (dView === 'notes' || mView === 'notes') renderNotes();
+    })
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notes' }, ({ old: note }) => {
+      if (!notes.some(n => n.id === note.id)) return;
+      notes = notes.filter(n => n.id !== note.id);
+      if (activeNoteId === note.id) activeNoteId = null;
+      if (dView === 'notes' || mView === 'notes') renderNotes();
+    })
     .subscribe(status => {
       const dot = document.getElementById(isMobile ? 'm-sync-dot' : 'd-sync-dot');
       if (status === 'SUBSCRIBED') {

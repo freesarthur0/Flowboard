@@ -19,3 +19,10 @@ let firedSet = new Set(JSON.parse(localStorage.getItem(firedKey) || '[]'));
 // ── DUE-SOON ──
 const dueSoonKey = 'fb_duesoon_fired';
 let dueSoonFired = new Set(JSON.parse(localStorage.getItem(dueSoonKey) || '[]'));
+
+// ── ANOTAÇÕES ──
+let notes = [];
+let activeNoteId = null;
+let noteFilter = { category: '', tags: [], q: '', scope: 'all' };
+let noteEditorTab = 'edit'; // 'edit' | 'preview'
+let _noteSaveTimer = null;

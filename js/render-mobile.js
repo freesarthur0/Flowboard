@@ -6,7 +6,7 @@ function renderM() {
   document.getElementById('m-board-title').textContent = ab?.name || 'FlowBoard';
   renderMDrawer();
   if (mView === 'kanban') renderMKanban();
-  else if (mView === 'list') renderMList();
+  else if (mView === 'notes') renderNotes();
   else if (mView === 'stats') renderMStats();
   else if (mView === 'today') renderMToday();
 }
@@ -28,22 +28,22 @@ function renderMDrawer() {
 
 function setMView(v) {
   mView = v;
-  ['kanban', 'list', 'stats', 'reminders', 'today'].forEach(vv => {
+  ['kanban', 'notes', 'stats', 'reminders', 'today'].forEach(vv => {
     const btn = document.getElementById(`m-btn-${vv}`);
     if (btn) btn.classList.toggle('active', vv === v);
   });
   document.getElementById('m-col-tabs-wrap').style.display = v === 'kanban' ? 'block' : 'none';
-  document.getElementById('m-search-bar').style.display = v === 'list' ? 'block' : 'none';
-  ['m-kanban-view', 'm-list-view', 'm-stats-view', 'm-reminders-view', 'm-today-view'].forEach(id => {
+  const sb = document.getElementById('m-search-bar'); if (sb) sb.style.display = 'none';
+  ['m-kanban-view', 'm-notes-view', 'm-stats-view', 'm-reminders-view', 'm-today-view'].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = 'none';
   });
   if (v === 'kanban') { document.getElementById('m-kanban-view').style.display = 'flex'; renderM(); }
-  else if (v === 'list') { document.getElementById('m-list-view').style.display = 'block'; renderM(); }
+  else if (v === 'notes') { document.getElementById('m-notes-view').style.display = 'flex'; renderM(); }
   else if (v === 'stats') { document.getElementById('m-stats-view').style.display = 'block'; renderM(); }
   else if (v === 'reminders') { document.getElementById('m-reminders-view').style.display = 'flex'; renderReminders('m'); }
   else if (v === 'today') { document.getElementById('m-today-view').style.display = 'block'; renderM(); }
   // View entrance animation
-  const viewMap = { kanban:'m-kanban-view', list:'m-list-view', stats:'m-stats-view', reminders:'m-reminders-view', today:'m-today-view' };
+  const viewMap = { kanban:'m-kanban-view', notes:'m-notes-view', stats:'m-stats-view', reminders:'m-reminders-view', today:'m-today-view' };
   const enterEl = document.getElementById(viewMap[v]);
   if (enterEl) { enterEl.classList.remove('view-entering'); void enterEl.offsetWidth; enterEl.classList.add('view-entering'); }
 }

@@ -107,8 +107,8 @@
         <button class="view-tab active" id="d-tab-kanban" onclick="setDView('kanban')">
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="4" height="16" rx="1"/></svg>Kanban
         </button>
-        <button class="view-tab" id="d-tab-list" onclick="setDView('list')">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h6"/><rect x="14" y="13" width="6" height="6" rx="1"/><line x1="16" y1="15" x2="16" y2="19"/><line x1="14" y1="17" x2="20" y2="17"/></svg>Arquivados
+        <button class="view-tab" id="d-tab-notes" onclick="setDView('notes')">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>Anotações
         </button>
         <button class="view-tab" id="d-tab-stats" onclick="setDView('stats')">
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Stats
@@ -147,8 +147,26 @@
     </div>
     <div class="board-area" id="d-board-area">
       <div id="d-kanban-view"><div class="board" id="d-board"></div></div>
-      <div class="list-view" id="d-list-view">
-        <div id="d-archive-content"></div>
+      <div class="notes-view" id="d-notes-view">
+        <div class="notes-sidebar">
+          <div class="notes-toolbar">
+            <input id="d-notes-search" placeholder="Buscar anotações…" oninput="onNotesSearch(this.value)">
+            <button class="notes-new-btn" onclick="createNote()" title="Nova anotação">+ Nova</button>
+          </div>
+          <div class="notes-filter-row">
+            <select id="d-notes-scope" class="notes-scope-select" onchange="setNoteScope(this.value)">
+              <option value="all">Todas</option>
+              <option value="board">Deste quadro</option>
+              <option value="global">Globais</option>
+            </select>
+            <div id="d-notes-cats" class="notes-chip-row"></div>
+            <div id="d-notes-tags" class="notes-chip-row"></div>
+          </div>
+          <div class="notes-list" id="d-notes-list"></div>
+        </div>
+        <div class="notes-editor" id="d-notes-editor">
+          <div class="notes-empty">Selecione ou crie uma anotação</div>
+        </div>
       </div>
       <div class="timeline-view" id="d-timeline-view"></div>
       <div class="today-view" id="d-today-view"></div>
@@ -289,8 +307,18 @@
         <div class="m-board" id="m-board" onscroll="onMBoardScroll()"></div>
       </div>
     </div>
-    <div id="m-list-view" style="flex:1;overflow-y:auto;display:none;padding:12px 14px;">
-      <div id="m-list-cards" style="display:flex;flex-direction:column;gap:8px;"></div>
+    <div id="m-notes-view" style="flex:1;overflow:hidden;display:none;flex-direction:column;">
+      <div class="m-notes-toolbar">
+        <input id="m-notes-search" placeholder="Buscar anotações…" oninput="onNotesSearch(this.value)">
+        <select id="m-notes-scope" class="notes-scope-select" onchange="setNoteScope(this.value)">
+          <option value="all">Todas</option>
+          <option value="board">Deste quadro</option>
+          <option value="global">Globais</option>
+        </select>
+        <button class="notes-new-btn" onclick="createNote()">+ Nova</button>
+      </div>
+      <div class="m-notes-list" id="m-notes-list"></div>
+      <div class="m-notes-editor" id="m-notes-editor" style="display:none;"></div>
     </div>
     <div id="m-stats-view" style="display:none;" class="m-stats">
       <div class="m-stats-grid" id="m-stats-grid"></div>
@@ -335,9 +363,9 @@
       <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="4" height="16" rx="1"/></svg>
       <span>Kanban</span>
     </button>
-    <button class="m-bot-btn" id="m-btn-list" onclick="setMView('list')">
-      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-      <span>Lista</span>
+    <button class="m-bot-btn" id="m-btn-notes" onclick="setMView('notes')">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+      <span>Anotações</span>
     </button>
     <button class="m-bot-btn" id="m-btn-stats" onclick="setMView('stats')">
       <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -499,6 +527,7 @@
 <script src="js/search.js"></script>
 <script src="js/reminders.js"></script>
 <script src="js/timeline.js"></script>
+<script src="js/notes.js"></script>
 <script src="js/realtime.js"></script>
 <script src="js/init.js"></script>
 

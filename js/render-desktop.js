@@ -22,7 +22,7 @@ function renderD() {
   document.getElementById('d-board-title').value = ab?.name || '';
   renderDSidebar(); renderDStatsStrip(); renderReminders('d'); renderCal();
   if (dView === 'kanban') renderDKanban();
-  else if (dView === 'list') renderArchive();
+  else if (dView === 'notes') renderNotes();
   else if (dView === 'stats') renderDStats();
   else if (dView === 'timeline') renderTimeline();
   else if (dView === 'today') renderDToday();
@@ -62,15 +62,15 @@ function setDView(v) {
   dView = v;
   const kanban = document.getElementById('d-kanban-view');
   if (kanban) kanban.style.display = v === 'kanban' ? 'block' : 'none';
-  const listEl = document.getElementById('d-list-view');
-  if (listEl) listEl.classList.toggle('active', v === 'list');
+  const notesEl = document.getElementById('d-notes-view');
+  if (notesEl) notesEl.classList.toggle('active', v === 'notes');
   const statsEl = document.getElementById('d-stats-view');
   if (statsEl) statsEl.classList.toggle('active', v === 'stats');
   const tlEl = document.getElementById('d-timeline-view');
   if (tlEl) tlEl.classList.toggle('active', v === 'timeline');
   const todayEl = document.getElementById('d-today-view');
   if (todayEl) todayEl.classList.toggle('active', v === 'today');
-  ['kanban', 'list', 'stats', 'timeline', 'today'].forEach(vv => {
+  ['kanban', 'notes', 'stats', 'timeline', 'today'].forEach(vv => {
     const tab = document.getElementById(`d-tab-${vv}`);
     if (tab) tab.classList.toggle('active', vv === v);
   });
