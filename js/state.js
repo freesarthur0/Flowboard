@@ -20,9 +20,11 @@ let firedSet = new Set(JSON.parse(localStorage.getItem(firedKey) || '[]'));
 const dueSoonKey = 'fb_duesoon_fired';
 let dueSoonFired = new Set(JSON.parse(localStorage.getItem(dueSoonKey) || '[]'));
 
-// ── ANOTAÇÕES ──
-let notes = [];
-let activeNoteId = null;
-let noteFilter = { category: '', tags: [], q: '', scope: 'all' };
-let noteEditorTab = 'edit'; // 'edit' | 'preview'
-let _noteSaveTimer = null;
+// ── ANOTAÇÕES (Obsidian vault viewer — read-only) ──
+let vaultName = '';                 // nome da pasta raiz do vault carregado
+let vaultFiles = new Map();         // path relativo (ex: "Trabalho/Reunião.md") -> { file: File, content: string|null }
+let vaultAttachments = new Map();   // path relativo -> { file: File, url: string|null }
+let activeVaultPath = null;         // path atualmente aberto no preview
+let vaultOpenTabs = [];             // array de paths abertos (read-only multi-tab)
+let vaultExpandedFolders = new Set();
+let vaultSearchQuery = '';

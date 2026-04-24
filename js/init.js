@@ -102,7 +102,6 @@ async function init() {
   try {
     const [bData, cData] = await Promise.all([sbFetch('boards?order=created_at'), sbFetch('cards?order=created_at')]);
     boards = bData || []; cards = cData || [];
-    await loadNotes();
     if (!boards.length) {
       const nb = await sbFetch('boards', 'POST', { id: 'pessoal', name: 'Pessoal', color: '#7c6fff' });
       boards = nb || [{ id: 'pessoal', name: 'Pessoal', color: '#7c6fff' }];

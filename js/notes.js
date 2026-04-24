@@ -1,514 +1,426 @@
 // ══════════════════════════
-// ANOTAÇÕES — Obsidian-like
+// ANOTAÇÕES — Visualizador read-only do vault do Obsidian
 // ══════════════════════════
+// O usuário seleciona a pasta do vault via <input webkitdirectory>;
+// os .md são lidos lazy e renderizados em preview. Toda edição
+// continua acontecendo no Obsidian. Estado vive em memória até reload.
 
-// State extra (em state.js definimos: notes, activeNoteId, noteFilter, noteEditorTab)
-let notesOpenTabs = JSON.parse(localStorage.getItem('fb_notes_tabs') || '[]');
-let notesExpandedFolders = new Set(JSON.parse(localStorage.getItem('fb_notes_expanded') || '[]'));
-let notesViewMode = localStorage.getItem('fb_notes_view_mode') || 'split'; // 'source' | 'preview' | 'split'
+const VAULT_ATTACHMENT_EXTS = ['png','jpg','jpeg','gif','webp','svg','bmp','pdf'];
 
-function persistNotesUI() {
-  localStorage.setItem('fb_notes_tabs', JSON.stringify(notesOpenTabs));
-  localStorage.setItem('fb_notes_expanded', JSON.stringify([...notesExpandedFolders]));
-  localStorage.setItem('fb_notes_view_mode', notesViewMode);
-  if (activeNoteId) localStorage.setItem('fb_notes_active', activeNoteId);
+// ── Carga do vault ──
+function pickVault() {
+  const input = document.getElementById('vault-picker');
+  if (!input) return;
+  input.value = '';
+  input.click();
 }
 
-function genNoteId() {
-  return 'n_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
+function onVaultFolderPicked(event) {
+  const files = Array.from(event.target.files || []);
+  if (!files.length) return;
+  // Limpa estado anterior
+  for (const att of vaultAttachments.values()) { if (att.url) URL.revokeObjectURL(att.url); }
+  vaultFiles.clear();
+  vaultAttachments.clear();
+  vaultOpenTabs = [];
+  activeVaultPath = null;
+  vaultExpandedFolders = new Set();
+  vaultSearchQuery = '';
 
-async function loadNotes() {
-  try {
-    const data = await sbFetch('notes?order=updated_at.desc');
-    notes = data || [];
-    // restaura tabs/active válidos
-    notesOpenTabs = notesOpenTabs.filter(id => notes.some(n => n.id === id));
-    const lastActive = localStorage.getItem('fb_notes_active');
-    if (lastActive && notes.some(n => n.id === lastActive)) activeNoteId = lastActive;
-  } catch (e) {
-    console.warn('[Notes] Falha ao carregar (verifique se a tabela `notes` existe no Supabase):', e?.message || e);
-    notes = [];
-  }
-}
-
-// ── CRUD ──
-async function createNote(folderPath = '') {
-  const now = new Date().toISOString();
-  const note = {
-    id: genNoteId(),
-    title: '',
-    content: '',
-    category: folderPath || '',
-    tags: [],
-    board_id: null,
-    card_id: null,
-    pinned: false,
-    created_at: now,
-    updated_at: now
-  };
-  notes.unshift(note);
-  openTab(note.id);
-  renderNotes();
-  setTimeout(() => document.getElementById('obsd-title-input')?.focus(), 60);
-  try {
-    await sbFetch('notes', 'POST', note);
-  } catch (e) {
-    toast('Erro ao criar anotação', '#ef4444');
-    notes = notes.filter(n => n.id !== note.id);
-    closeTab(note.id);
-    renderNotes();
-  }
-}
-
-async function createFolderPrompt() {
-  const name = await showPrompt('Nova pasta', 'Nome da pasta (use / para subpastas, ex: Trabalho/Reuniões)', '');
-  if (!name) return;
-  const clean = name.trim().replace(/^\/|\/$/g, '');
-  if (!clean) return;
-  notesExpandedFolders.add(clean);
-  // Para a pasta "existir" precisa de pelo menos uma nota dentro — cria uma vazia
-  await createNote(clean);
-}
-
-function _patchNoteLocal(id, patch) {
-  const i = notes.findIndex(n => n.id === id);
-  if (i === -1) return null;
-  notes[i] = { ...notes[i], ...patch, updated_at: new Date().toISOString() };
-  return notes[i];
-}
-
-async function updateNote(id, patch, opts = {}) {
-  const updated = _patchNoteLocal(id, patch);
-  if (!updated) return;
-  if (!opts.skipRender) renderNotes();
-  try {
-    await sbFetch(`notes?id=eq.${id}`, 'PATCH', { ...patch, updated_at: updated.updated_at });
-  } catch (e) {
-    toast('Erro ao salvar anotação', '#ef4444');
-  }
-}
-
-function debouncedSaveNote(id, patch) {
-  _patchNoteLocal(id, patch);
-  if (_noteSaveTimer) clearTimeout(_noteSaveTimer);
-  _noteSaveTimer = setTimeout(async () => {
-    try {
-      const n = notes.find(nn => nn.id === id);
-      if (!n) return;
-      await sbFetch(`notes?id=eq.${id}`, 'PATCH', { ...patch, updated_at: n.updated_at });
-    } catch (e) {
-      toast('Erro ao salvar anotação', '#ef4444');
+  // Infere nome do vault e popula maps
+  let firstSeg = '';
+  for (const f of files) {
+    const rel = f.webkitRelativePath || f.name;
+    if (!firstSeg) firstSeg = rel.split('/')[0];
+    const path = rel.split('/').slice(1).join('/'); // remove pasta-raiz
+    if (!path) continue;
+    if (path.split('/').some(seg => seg.startsWith('.'))) continue; // ignora pastas/arquivos ocultos (ex: .obsidian)
+    const lower = path.toLowerCase();
+    if (lower.endsWith('.md')) {
+      vaultFiles.set(path, { file: f, content: null });
+    } else {
+      const ext = lower.split('.').pop();
+      if (VAULT_ATTACHMENT_EXTS.includes(ext)) {
+        vaultAttachments.set(path, { file: f, url: null });
+      }
     }
-  }, 600);
-}
-
-async function deleteNote(id) {
-  const n = notes.find(nn => nn.id === id);
-  if (!n) return;
-  const ok = await showConfirm('Excluir anotação', `Tem certeza que deseja excluir "${n.title || 'sem título'}"?`);
-  if (!ok) return;
-  notes = notes.filter(nn => nn.id !== id);
-  closeTab(id);
-  renderNotes();
-  try { await sbFetch(`notes?id=eq.${id}`, 'DELETE'); }
-  catch (e) { toast('Erro ao excluir', '#ef4444'); }
-}
-
-// ── Tabs ──
-function openTab(id) {
-  if (!notesOpenTabs.includes(id)) notesOpenTabs.push(id);
-  activeNoteId = id;
-  persistNotesUI();
-}
-
-function closeTab(id) {
-  const idx = notesOpenTabs.indexOf(id);
-  if (idx === -1) return;
-  notesOpenTabs.splice(idx, 1);
-  if (activeNoteId === id) {
-    activeNoteId = notesOpenTabs[idx] || notesOpenTabs[idx - 1] || null;
   }
-  persistNotesUI();
+  vaultName = firstSeg || 'vault';
+
+  if (typeof toast === 'function') toast(`Vault "${vaultName}" carregado: ${vaultFiles.size} notas`, '#4ade80');
+  const closeBtn = document.getElementById('vault-close-btn');
+  if (closeBtn) closeBtn.style.display = '';
   renderNotes();
 }
 
-function selectNote(id) {
-  openTab(id);
+function closeVault() {
+  for (const att of vaultAttachments.values()) { if (att.url) URL.revokeObjectURL(att.url); }
+  vaultFiles.clear();
+  vaultAttachments.clear();
+  vaultName = '';
+  vaultOpenTabs = [];
+  activeVaultPath = null;
+  vaultExpandedFolders = new Set();
+  vaultSearchQuery = '';
+  const closeBtn = document.getElementById('vault-close-btn');
+  if (closeBtn) closeBtn.style.display = 'none';
+  const search = document.getElementById('d-notes-search');
+  if (search) search.value = '';
   renderNotes();
 }
 
-function togglePinNote(id) {
-  const n = notes.find(nn => nn.id === id);
-  if (!n) return;
-  updateNote(id, { pinned: !n.pinned });
-}
-
-// ── Filtros / busca ──
-function setNoteScope(s) { noteFilter.scope = s; renderNotes(); }
-function onNotesSearch(v) { noteFilter.q = (v || '').toLowerCase().trim(); renderTreeOnly(); }
-function toggleNoteTagFilter(tag) {
-  const i = noteFilter.tags.indexOf(tag);
-  if (i === -1) noteFilter.tags.push(tag); else noteFilter.tags.splice(i, 1);
-  renderNotes();
-}
-
-function getScopedNotes() {
-  let list = notes.slice();
-  if (noteFilter.scope === 'board') list = list.filter(n => n.board_id === activeBoardId);
-  else if (noteFilter.scope === 'global') list = list.filter(n => !n.board_id);
-  if (noteFilter.q) {
-    const q = noteFilter.q;
-    list = list.filter(n =>
-      (n.title || '').toLowerCase().includes(q) ||
-      (n.content || '').toLowerCase().includes(q) ||
-      (n.tags || []).some(t => t.toLowerCase().includes(q)) ||
-      (n.category || '').toLowerCase().includes(q)
-    );
+// ── Leitura lazy ──
+async function readVaultFile(path) {
+  const entry = vaultFiles.get(path);
+  if (!entry) return '';
+  if (entry.content === null) {
+    try { entry.content = await entry.file.text(); }
+    catch (e) { entry.content = ''; }
   }
-  if (noteFilter.tags.length) list = list.filter(n => noteFilter.tags.every(t => (n.tags || []).includes(t)));
-  return list;
+  return entry.content;
 }
 
-// ── Árvore de pastas ──
-function buildFolderTree(list) {
-  const root = { folders: {}, notes: [] };
-  list.forEach(n => {
-    const path = (n.category || '').trim();
-    if (!path) { root.notes.push(n); return; }
-    const parts = path.split('/').map(p => p.trim()).filter(Boolean);
-    let cur = root;
-    parts.forEach(part => {
-      cur.folders[part] = cur.folders[part] || { folders: {}, notes: [], path: '' };
-      cur = cur.folders[part];
-    });
-    cur.notes.push(n);
-  });
-  // anota path completo nas pastas
-  function annotate(node, prefix) {
-    Object.entries(node.folders).forEach(([name, child]) => {
-      child.path = prefix ? `${prefix}/${name}` : name;
-      annotate(child, child.path);
-    });
+function getAttachmentURL(path) {
+  // Lookup case-insensitive por nome (Obsidian permite ![[img]] sem path completo)
+  let entry = vaultAttachments.get(path);
+  if (!entry) {
+    const lower = path.toLowerCase();
+    const baseName = lower.split('/').pop();
+    for (const [k, v] of vaultAttachments.entries()) {
+      const kLower = k.toLowerCase();
+      if (kLower === lower || kLower.endsWith('/' + baseName) || kLower === baseName) { entry = v; break; }
+    }
   }
-  annotate(root, '');
+  if (!entry) return '';
+  if (!entry.url) entry.url = URL.createObjectURL(entry.file);
+  return entry.url;
+}
+
+// ── Tree ──
+function buildVaultTree() {
+  const root = { name: vaultName || 'vault', path: '', children: {}, files: [] };
+  const q = vaultSearchQuery.trim().toLowerCase();
+  const paths = Array.from(vaultFiles.keys());
+  const filtered = q ? paths.filter(p => p.toLowerCase().includes(q)) : paths;
+  for (const path of filtered) {
+    const segs = path.split('/');
+    const fileName = segs.pop();
+    let node = root;
+    let acc = '';
+    for (const seg of segs) {
+      acc = acc ? `${acc}/${seg}` : seg;
+      if (!node.children[seg]) node.children[seg] = { name: seg, path: acc, children: {}, files: [] };
+      node = node.children[seg];
+    }
+    node.files.push({ name: fileName, path });
+  }
   return root;
 }
 
 function toggleFolder(path) {
-  if (notesExpandedFolders.has(path)) notesExpandedFolders.delete(path);
-  else notesExpandedFolders.add(path);
-  persistNotesUI();
+  if (vaultExpandedFolders.has(path)) vaultExpandedFolders.delete(path);
+  else vaultExpandedFolders.add(path);
   renderTreeOnly();
 }
 
 function collapseAllFolders() {
-  notesExpandedFolders.clear();
-  persistNotesUI();
+  vaultExpandedFolders = new Set();
   renderTreeOnly();
 }
 
-async function renameFolder(oldPath) {
-  const newName = await showPrompt('Renomear pasta', `Renomear "${oldPath}"`, oldPath);
-  if (!newName || newName === oldPath) return;
-  const affected = notes.filter(n => n.category === oldPath || (n.category || '').startsWith(oldPath + '/'));
-  for (const n of affected) {
-    const newCat = (n.category || '').replace(oldPath, newName);
-    await updateNote(n.id, { category: newCat }, { skipRender: true });
+function expandFolderPath(path) {
+  // Garante que toda pasta-pai do path esteja expandida (usado ao abrir nota via wiki-link)
+  const segs = path.split('/');
+  segs.pop();
+  let acc = '';
+  for (const seg of segs) {
+    acc = acc ? `${acc}/${seg}` : seg;
+    vaultExpandedFolders.add(acc);
   }
-  renderNotes();
 }
 
-async function deleteFolder(path) {
-  const inFolder = notes.filter(n => n.category === path || (n.category || '').startsWith(path + '/'));
-  const ok = await showConfirm('Excluir pasta', `Excluir "${path}" e todas as ${inFolder.length} anotações dentro?`);
-  if (!ok) return;
-  for (const n of inFolder) {
-    notes = notes.filter(nn => nn.id !== n.id);
-    closeTab(n.id);
-    try { await sbFetch(`notes?id=eq.${n.id}`, 'DELETE'); } catch (e) {}
-  }
-  notesExpandedFolders.delete(path);
-  renderNotes();
-}
-
-// ── Renderização ──
-function renderNotes() {
-  const dScope = document.getElementById('d-notes-scope');
-  if (dScope && dScope.value !== noteFilter.scope) dScope.value = noteFilter.scope;
-  const mScope = document.getElementById('m-notes-scope');
-  if (mScope && mScope.value !== noteFilter.scope) mScope.value = noteFilter.scope;
-  renderTreeOnly();
-  renderTabs();
-  renderEditor();
-  renderOutline();
-  renderTagCloud();
-  renderStatusbar();
-  persistNotesUI();
-}
-
-function renderTreeOnly() {
-  const tree = buildFolderTree(getScopedNotes());
-  const html = treeNodeHTML(tree, true);
-  const dT = document.getElementById('d-notes-tree'); if (dT) dT.innerHTML = html || `<div class="obsd-tree-empty">Nenhuma anotação.<br>Clique no ícone <strong>+</strong> para criar.</div>`;
-  const mT = document.getElementById('m-notes-tree'); if (mT) mT.innerHTML = html || `<div class="obsd-tree-empty">Nenhuma anotação.<br>Toque em <strong>+</strong> para criar.</div>`;
-}
-
-function treeNodeHTML(node, isRoot) {
+function treeNodeHTML(node, depth) {
+  const pad = depth * 12;
+  // Subpastas primeiro (alfabético)
+  const subs = Object.values(node.children).sort((a, b) => a.name.localeCompare(b.name));
+  // Arquivos depois
+  const files = node.files.slice().sort((a, b) => a.name.localeCompare(b.name));
   let html = '';
-  // Pastas (ordem alfabética)
-  Object.keys(node.folders).sort((a, b) => a.localeCompare(b)).forEach(name => {
-    const child = node.folders[name];
-    const path = child.path;
-    const open = notesExpandedFolders.has(path);
-    const count = countNotesInFolder(child);
-    html += `<div class="obsd-tree-row folder" onclick="toggleFolder('${esc(path)}')" title="${esc(path)}">
-      <span class="obsd-tree-caret ${open ? 'open' : ''}">▶</span>
-      <span class="obsd-tree-icon">${open
-        ? '<svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24"><path d="M19 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 3h8a2 2 0 0 1 2 2v9z"/></svg>'
-        : '<svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'}</span>
-      <span class="obsd-tree-label">${esc(name)} <span style="color:var(--text3);font-size:10px">(${count})</span></span>
-      <span class="obsd-folder-actions">
-        <button onclick="event.stopPropagation();createNote('${esc(path)}')" title="Nova nota aqui">＋</button>
-        <button onclick="event.stopPropagation();renameFolder('${esc(path)}')" title="Renomear">✎</button>
-        <button onclick="event.stopPropagation();deleteFolder('${esc(path)}')" title="Excluir">×</button>
-      </span>
+  for (const sub of subs) {
+    const expanded = vaultExpandedFolders.has(sub.path) || (vaultSearchQuery && hasMatch(sub));
+    const childCount = countNotesInFolder(sub);
+    html += `<div class="obsd-tree-row obsd-tree-folder" style="padding-left:${pad + 4}px" onclick="toggleFolder('${escAttr(sub.path)}')">
+      <span class="obsd-tree-caret">${expanded ? '▾' : '▸'}</span>
+      <span class="obsd-tree-icon">${expanded
+        ? '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 3h8a2 2 0 0 1 2 2v9z"/></svg>'
+        : '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'}</span>
+      <span class="obsd-tree-label">${esc(sub.name)} <span style="color:var(--text3);font-size:10px">(${childCount})</span></span>
     </div>`;
-    html += `<div class="obsd-tree-children ${open ? 'open' : ''}" style="padding-left:14px">${treeNodeHTML(child, false)}</div>`;
-  });
-  // Notas dessa pasta
-  const sortedNotes = node.notes.slice().sort((a, b) => {
-    if (!!b.pinned - !!a.pinned !== 0) return !!b.pinned - !!a.pinned;
-    return (b.updated_at || '').localeCompare(a.updated_at || '');
-  });
-  sortedNotes.forEach(n => {
-    const isActive = n.id === activeNoteId;
-    const isOpen = notesOpenTabs.includes(n.id);
-    const title = n.title || '(sem título)';
-    html += `<div class="obsd-tree-row note ${isActive ? 'active' : isOpen ? 'opened' : ''}" onclick="selectNote('${n.id}')" title="${esc(title)}">
-      <span class="obsd-tree-caret"></span>
-      <span class="obsd-tree-icon"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
-      <span class="obsd-tree-label">${esc(title)}</span>
-      ${n.pinned ? '<span class="obsd-tree-pin" title="Fixada">📌</span>' : ''}
+    if (expanded) html += `<div class="obsd-tree-children">${treeNodeHTML(sub, depth + 1)}</div>`;
+  }
+  for (const f of files) {
+    const active = activeVaultPath === f.path ? ' active' : '';
+    const display = f.name.replace(/\.md$/i, '');
+    html += `<div class="obsd-tree-row obsd-tree-file${active}" style="padding-left:${pad + 22}px" onclick="selectVaultNote('${escAttr(f.path)}')">
+      <span class="obsd-tree-icon"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
+      <span class="obsd-tree-label">${esc(display)}</span>
     </div>`;
-  });
+  }
   return html;
 }
 
-function countNotesInFolder(node) {
-  let c = node.notes.length;
-  Object.values(node.folders).forEach(f => { c += countNotesInFolder(f); });
-  return c;
+function hasMatch(node) {
+  // Para busca: expande automaticamente pastas que contém matches
+  if (node.files && node.files.length) return true;
+  for (const sub of Object.values(node.children || {})) if (hasMatch(sub)) return true;
+  return false;
 }
+
+function countNotesInFolder(node) {
+  let n = node.files ? node.files.length : 0;
+  for (const sub of Object.values(node.children || {})) n += countNotesInFolder(sub);
+  return n;
+}
+
+function escAttr(s) { return String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;'); }
 
 // ── Tabs ──
-function renderTabs() {
-  const tabsEl = document.getElementById('d-notes-tabs');
-  if (!tabsEl) return;
-  if (!notesOpenTabs.length) {
-    tabsEl.innerHTML = '<div class="obsd-tabs-empty">Nenhuma aba aberta. Clique em uma anotação na árvore.</div>';
-    return;
-  }
-  tabsEl.innerHTML = notesOpenTabs.map(id => {
-    const n = notes.find(nn => nn.id === id);
-    if (!n) return '';
-    const title = n.title || '(sem título)';
-    const isActive = id === activeNoteId;
-    return `<div class="obsd-tab ${isActive ? 'active' : ''}" onclick="selectNote('${id}')" title="${esc(n.category ? n.category + '/' : '')}${esc(title)}">
-      <span class="obsd-tab-title">${esc(title)}</span>
-      <span class="obsd-tab-close" onclick="event.stopPropagation();closeTab('${id}')" title="Fechar (Ctrl+W)">×</span>
-    </div>`;
-  }).join('');
-}
-
-// ── Editor ──
-function setNotesViewMode(m) { notesViewMode = m; persistNotesUI(); renderEditor(); }
-
-function renderEditor() {
-  const wrap = document.getElementById('d-notes-editor');
-  const wrapM = document.getElementById('m-notes-editor');
-  const n = notes.find(nn => nn.id === activeNoteId);
-  if (!n) {
-    if (wrap) wrap.innerHTML = `<div class="obsd-editor-empty">
-      <svg width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      <div>Nenhuma anotação aberta</div>
-      <div style="font-size:12px">Pressione <kbd>Ctrl+N</kbd> para criar uma nova</div>
-    </div>`;
-    if (wrapM) { wrapM.style.display = 'none'; }
-    const mTree = document.getElementById('m-notes-tree'); if (mTree) mTree.style.display = 'block';
-    return;
-  }
-  const cats = [...new Set(notes.map(nn => nn.category).filter(Boolean))];
-  const catsOpts = cats.map(c => `<option value="${esc(c)}">`).join('');
-  const board = n.board_id ? boards.find(b => b.id === n.board_id) : null;
-  const boardOpts = `<option value="">— sem vínculo —</option>` +
-    boards.map(b => `<option value="${b.id}" ${b.id === n.board_id ? 'selected' : ''}>${esc(b.name)}</option>`).join('');
-  const tagsHTML = (n.tags || []).map(t => `
-    <span class="obsd-tag">#${esc(t)}<button onclick="removeNoteTag('${n.id}','${esc(t)}')" title="Remover">×</button></span>
-  `).join('');
-
-  const previewHTML = renderObsdMarkdown(n.content || '*Anotação vazia*');
-
-  const html = `
-    <div class="obsd-editor-head">
-      <input id="obsd-title-input" class="obsd-title-input" placeholder="Sem título"
-        value="${esc(n.title || '')}" oninput="onNoteTitleInput('${n.id}', this.value)">
-      <div class="obsd-mode-toggle" title="Modo de visualização">
-        <button class="obsd-mode-btn ${notesViewMode === 'source' ? 'active' : ''}" onclick="setNotesViewMode('source')" title="Só fonte">📝</button>
-        <button class="obsd-mode-btn ${notesViewMode === 'split' ? 'active' : ''}" onclick="setNotesViewMode('split')" title="Lado a lado">⇆</button>
-        <button class="obsd-mode-btn ${notesViewMode === 'preview' ? 'active' : ''}" onclick="setNotesViewMode('preview')" title="Só preview">👁</button>
-      </div>
-      <button class="obsd-head-btn ${n.pinned ? 'pinned' : ''}" onclick="togglePinNote('${n.id}')" title="Fixar">📌</button>
-      <button class="obsd-head-btn" onclick="deleteNote('${n.id}')" title="Excluir">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-      </button>
-    </div>
-    <div class="obsd-meta-row">
-      <input class="obsd-meta-input obsd-meta-folder" list="obsd-cats" value="${esc(n.category || '')}"
-        placeholder="sem pasta" onchange="updateNote('${n.id}', { category: this.value.trim() })">
-      <datalist id="obsd-cats">${catsOpts}</datalist>
-      <select class="obsd-meta-input obsd-meta-board" onchange="updateNote('${n.id}', { board_id: this.value || null })">${boardOpts}</select>
-      <div class="obsd-meta-tagbox">
-        ${tagsHTML}
-        <input class="obsd-tag-input" placeholder="+ tag" onkeydown="onNoteTagKey(event, '${n.id}')">
-      </div>
-    </div>
-    <div class="obsd-editor-body mode-${notesViewMode}">
-      <div class="obsd-source">
-        <textarea id="obsd-content-area" class="obsd-textarea" placeholder="# Comece a escrever…&#10;&#10;**negrito**, *itálico*, \`código\`, [link](url)&#10;&#10;- Lista&#10;1. Numerada&#10;> Quote&#10;\`\`\`&#10;bloco de código&#10;\`\`\`"
-          oninput="onNoteContentInput('${n.id}', this.value)" onscroll="syncPreviewScroll()">${esc(n.content || '')}</textarea>
-      </div>
-      <div class="obsd-divider"></div>
-      <div class="obsd-preview" id="obsd-preview-pane">
-        <div class="obsd-md">${previewHTML}</div>
-      </div>
-    </div>
-  `;
-  if (wrap) wrap.innerHTML = html;
-  if (wrapM) {
-    wrapM.innerHTML = `<button class="obsd-m-back" onclick="closeMNoteEditor()">‹ Voltar</button>` + html;
-    wrapM.style.display = 'flex';
-    const mTree = document.getElementById('m-notes-tree'); if (mTree) mTree.style.display = 'none';
-  }
-}
-
-function syncPreviewScroll() {
-  if (notesViewMode !== 'split') return;
-  const ta = document.getElementById('obsd-content-area');
-  const pv = document.getElementById('obsd-preview-pane');
-  if (!ta || !pv) return;
-  const ratio = ta.scrollTop / Math.max(1, ta.scrollHeight - ta.clientHeight);
-  pv.scrollTop = ratio * Math.max(1, pv.scrollHeight - pv.clientHeight);
-}
-
-function closeMNoteEditor() {
-  activeNoteId = null;
-  const ed = document.getElementById('m-notes-editor'); if (ed) ed.style.display = 'none';
-  const ml = document.getElementById('m-notes-tree'); if (ml) ml.style.display = 'block';
+function selectVaultNote(path) {
+  if (!vaultFiles.has(path)) return;
+  if (!vaultOpenTabs.includes(path)) vaultOpenTabs.push(path);
+  activeVaultPath = path;
+  expandFolderPath(path);
   renderNotes();
 }
 
-function onNoteTitleInput(id, v) {
-  debouncedSaveNote(id, { title: v });
-  // re-render tabs e tree pra mostrar título atualizado, mas não o editor (manteria foco)
-  renderTabs();
-  renderTreeOnly();
-  renderStatusbar();
-}
-
-function onNoteContentInput(id, v) {
-  debouncedSaveNote(id, { content: v });
-  // atualiza preview e outline em tempo real
-  const pv = document.getElementById('obsd-preview-pane');
-  if (pv) pv.querySelector('.obsd-md').innerHTML = renderObsdMarkdown(v || '*Anotação vazia*');
-  renderOutline();
-  renderStatusbar();
-}
-
-function onNoteTagKey(e, id) {
-  if (e.key === 'Enter' || e.key === ',') {
-    e.preventDefault();
-    const v = e.target.value.trim().replace(/^#/, '');
-    if (!v) return;
-    const n = notes.find(nn => nn.id === id);
-    if (!n) return;
-    const tags = [...(n.tags || [])];
-    if (!tags.includes(v)) tags.push(v);
-    e.target.value = '';
-    updateNote(id, { tags });
+function closeVaultTab(path, ev) {
+  if (ev) ev.stopPropagation();
+  const idx = vaultOpenTabs.indexOf(path);
+  if (idx === -1) return;
+  vaultOpenTabs.splice(idx, 1);
+  if (activeVaultPath === path) {
+    activeVaultPath = vaultOpenTabs[idx] || vaultOpenTabs[idx - 1] || null;
   }
+  renderNotes();
 }
 
-function removeNoteTag(id, tag) {
-  const n = notes.find(nn => nn.id === id);
-  if (!n) return;
-  updateNote(id, { tags: (n.tags || []).filter(t => t !== tag) });
-}
-
-// ── Outline (headings da nota ativa) ──
-function renderOutline() {
-  const el = document.getElementById('d-notes-outline');
+function renderTabs() {
+  const el = document.getElementById('d-notes-tabs');
   if (!el) return;
-  const n = notes.find(nn => nn.id === activeNoteId);
-  if (!n) { el.innerHTML = '<div class="obsd-outline-empty">Sem anotação aberta.</div>'; return; }
-  const headings = [];
-  (n.content || '').split('\n').forEach((line, i) => {
-    const m = /^(#{1,4})\s+(.+)/.exec(line);
-    if (m) headings.push({ level: m[1].length, text: m[2].trim(), line: i });
-  });
-  if (!headings.length) { el.innerHTML = '<div class="obsd-outline-empty">Nenhum título nesta nota.</div>'; return; }
-  el.innerHTML = headings.map(h =>
-    `<div class="obsd-outline-item obsd-outline-h${h.level}" onclick="scrollToHeading(${h.line})">${esc(h.text)}</div>`
-  ).join('');
-}
-
-function scrollToHeading(line) {
-  const ta = document.getElementById('obsd-content-area');
-  if (!ta) return;
-  const lines = ta.value.split('\n');
-  let pos = 0;
-  for (let i = 0; i < line && i < lines.length; i++) pos += lines[i].length + 1;
-  ta.focus();
-  ta.setSelectionRange(pos, pos);
-  // move scroll
-  const lh = parseFloat(getComputedStyle(ta).lineHeight) || 22;
-  ta.scrollTop = Math.max(0, line * lh - 40);
-}
-
-function renderTagCloud() {
-  const el = document.getElementById('d-notes-tagcloud');
-  if (!el) return;
-  const allTags = [...new Set(notes.flatMap(n => n.tags || []))].sort();
-  if (!allTags.length) { el.innerHTML = '<div class="obsd-outline-empty">Sem tags.</div>'; return; }
-  el.innerHTML = allTags.map(t => {
-    const active = noteFilter.tags.includes(t);
-    return `<span class="obsd-tag" style="${active ? 'background:var(--accent);color:#fff' : ''}" onclick="toggleNoteTagFilter('${esc(t)}')">#${esc(t)}</span>`;
+  if (!vaultOpenTabs.length) { el.innerHTML = '<div class="obsd-tabs-empty"></div>'; return; }
+  el.innerHTML = vaultOpenTabs.map(path => {
+    const name = path.split('/').pop().replace(/\.md$/i, '');
+    const active = path === activeVaultPath ? ' active' : '';
+    return `<div class="obsd-tab${active}" onclick="activateVaultTab('${escAttr(path)}')" title="${esc(path)}">
+      <span class="obsd-tab-title">${esc(name)}</span>
+      <span class="obsd-tab-close" onclick="closeVaultTab('${escAttr(path)}', event)">×</span>
+    </div>`;
   }).join('');
 }
 
+function activateVaultTab(path) {
+  if (!vaultFiles.has(path)) return;
+  activeVaultPath = path;
+  renderNotes();
+}
+
+// ── Render principal ──
+function renderNotes() {
+  if (dView !== 'notes' && mView !== 'notes') return;
+  if (isMobile) { renderMobileEmpty(); return; }
+  renderTreeOnly();
+  renderTabs();
+  renderEditor();
+  renderStatusbar();
+}
+
+function renderMobileEmpty() {
+  const el = document.getElementById('m-notes-view');
+  if (el) el.innerHTML = `<div class="obsd-m-empty">📵 Visualizador de vault disponível somente no desktop.</div>`;
+}
+
+function renderTreeOnly() {
+  const el = document.getElementById('d-notes-tree');
+  if (!el) return;
+  if (!vaultName) { el.innerHTML = ''; return; }
+  if (vaultFiles.size === 0) {
+    el.innerHTML = `<div class="obsd-tree-empty">Nenhum .md encontrado.</div>`;
+    return;
+  }
+  const tree = buildVaultTree();
+  const html = treeNodeHTML(tree, 0);
+  el.innerHTML = html || `<div class="obsd-tree-empty">Sem resultados.</div>`;
+}
+
+async function renderEditor() {
+  const el = document.getElementById('d-notes-editor');
+  const outline = document.getElementById('d-notes-outline');
+  const tagcloud = document.getElementById('d-notes-tagcloud');
+  if (!el) return;
+  if (!vaultName) {
+    el.innerHTML = `<div class="obsd-vault-empty">
+      <div style="font-size:38px;opacity:0.7;">📁</div>
+      <div style="font-size:15px;font-weight:600;color:var(--text);">Nenhum vault carregado</div>
+      <button onclick="pickVault()">Selecionar pasta do vault…</button>
+      <div class="obsd-vault-hint">Escolha a pasta-raiz do seu vault do Obsidian. As notas são lidas em memória só nesta sessão — nada é enviado para nenhum servidor.</div>
+    </div>`;
+    if (outline) outline.innerHTML = '';
+    if (tagcloud) tagcloud.innerHTML = '';
+    return;
+  }
+  if (!activeVaultPath) {
+    el.innerHTML = `<div class="obsd-editor-empty">Selecione uma nota na árvore.</div>`;
+    if (outline) outline.innerHTML = '';
+    if (tagcloud) tagcloud.innerHTML = '';
+    return;
+  }
+  const path = activeVaultPath;
+  const content = await readVaultFile(path);
+  // Se mudou de nota durante o await, ignora
+  if (path !== activeVaultPath) return;
+  const fileName = path.split('/').pop().replace(/\.md$/i, '');
+  const folderBread = path.includes('/') ? path.substring(0, path.lastIndexOf('/')) : '';
+  const processed = processObsidianSyntax(content);
+  const md = renderObsdMarkdown(processed);
+  el.innerHTML = `
+    <div class="obsd-editor-head">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div style="font-size:18px;font-weight:700;color:var(--text);">${esc(fileName)}</div>
+        <span class="obsd-readonly-badge">📖 READ-ONLY</span>
+      </div>
+      ${folderBread ? `<div style="font-size:11px;color:var(--text3);">${esc(folderBread)}</div>` : ''}
+    </div>
+    <div class="obsd-editor-body mode-preview">
+      <div class="obsd-preview"><div class="obsd-md">${md}</div></div>
+    </div>`;
+  renderOutline(content);
+  renderTagCloud();
+}
+
+// ── Pós-processamento Obsidian-específico ──
+function processObsidianSyntax(content) {
+  if (!content) return '';
+  let out = content;
+  // ![[image.png]] ou ![[Nota.md]]
+  out = out.replace(/!\[\[([^\]]+?)\]\]/g, (_, target) => {
+    const [rawPath, alias] = target.split('|');
+    const path = rawPath.trim();
+    const lower = path.toLowerCase();
+    const ext = lower.includes('.') ? lower.split('.').pop() : '';
+    if (VAULT_ATTACHMENT_EXTS.includes(ext)) {
+      const url = getAttachmentURL(path);
+      if (!url) return `<span class="obsd-wikilink-broken" title="Anexo não encontrado">![[${esc(path)}]]</span>`;
+      if (ext === 'pdf') return `<a href="${url}" target="_blank" class="obsd-wikilink">📄 ${esc(alias || path)}</a>`;
+      return `<img src="${url}" alt="${esc(alias || path)}" style="max-width:100%;border-radius:6px;">`;
+    }
+    // Embed de nota: link estilizado (preview inline pode ser feito v2)
+    const resolved = resolveWikiLink(path);
+    if (resolved) return `<a class="obsd-wikilink obsd-wikilink-embed" data-vaultpath="${escAttr(resolved)}" onclick="selectVaultNote('${escAttr(resolved)}');return false;" href="#">📎 ${esc(alias || path)}</a>`;
+    return `<span class="obsd-wikilink-broken">![[${esc(path)}]]</span>`;
+  });
+  // [[Nota|alias]] ou [[Nota]]
+  out = out.replace(/\[\[([^\]]+?)\]\]/g, (_, target) => {
+    const [rawPath, alias] = target.split('|');
+    const path = rawPath.trim();
+    const display = (alias || path).trim();
+    const resolved = resolveWikiLink(path);
+    if (resolved) return `<a class="obsd-wikilink" data-vaultpath="${escAttr(resolved)}" onclick="selectVaultNote('${escAttr(resolved)}');return false;" href="#">${esc(display)}</a>`;
+    return `<span class="obsd-wikilink-broken" title="Nota não encontrada">${esc(display)}</span>`;
+  });
+  return out;
+}
+
+function resolveWikiLink(target) {
+  // target pode ser "Nome", "Pasta/Nome", com ou sem .md
+  let t = target.trim();
+  if (!/\.md$/i.test(t)) t = t + '.md';
+  if (vaultFiles.has(t)) return t;
+  // Match case-insensitive por path completo
+  const lower = t.toLowerCase();
+  for (const k of vaultFiles.keys()) if (k.toLowerCase() === lower) return k;
+  // Match por nome de arquivo (sem path)
+  const baseName = lower.split('/').pop();
+  for (const k of vaultFiles.keys()) {
+    const kLower = k.toLowerCase();
+    if (kLower === baseName || kLower.endsWith('/' + baseName)) return k;
+  }
+  return null;
+}
+
+// ── Outline ──
+function renderOutline(content) {
+  const el = document.getElementById('d-notes-outline');
+  if (!el) return;
+  if (!content) { el.innerHTML = '<div class="obsd-outline-empty">—</div>'; return; }
+  const lines = content.split('\n');
+  const items = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(#{1,4})\s+(.+)$/);
+    if (m) items.push({ level: m[1].length, text: m[2].trim(), idx: items.length });
+  }
+  if (!items.length) { el.innerHTML = '<div class="obsd-outline-empty">Sem cabeçalhos</div>'; return; }
+  el.innerHTML = items.map(h =>
+    `<div class="obsd-outline-item obsd-outline-h${h.level}" onclick="scrollToHeading(${h.idx})">${esc(h.text)}</div>`
+  ).join('');
+}
+
+function scrollToHeading(idx) {
+  const preview = document.querySelector('#d-notes-editor .obsd-md');
+  if (!preview) return;
+  const headings = preview.querySelectorAll('h1, h2, h3, h4');
+  const target = headings[idx];
+  if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── Tag cloud (extrai #tags do conteúdo da nota ativa) ──
+function renderTagCloud() {
+  const el = document.getElementById('d-notes-tagcloud');
+  if (!el) return;
+  if (!activeVaultPath) { el.innerHTML = ''; return; }
+  const entry = vaultFiles.get(activeVaultPath);
+  if (!entry || entry.content == null) { el.innerHTML = ''; return; }
+  const tags = new Set();
+  const re = /(?:^|\s)#([a-zA-Z0-9][\w\-/]*)/g;
+  let m;
+  while ((m = re.exec(entry.content)) !== null) tags.add(m[1]);
+  if (!tags.size) { el.innerHTML = '<div class="obsd-outline-empty">—</div>'; return; }
+  el.innerHTML = Array.from(tags).sort().map(t => `<span class="obsd-tag">#${esc(t)}</span>`).join('');
+}
+
+// ── Statusbar ──
 function renderStatusbar() {
   const el = document.getElementById('d-notes-statusbar');
   if (!el) return;
-  const n = notes.find(nn => nn.id === activeNoteId);
-  if (!n) { el.innerHTML = `<span>${notes.length} anotações no total</span>`; return; }
-  const txt = n.content || '';
-  const words = (txt.match(/\S+/g) || []).length;
-  const chars = txt.length;
-  const lines = txt.split('\n').length;
-  const updated = new Date(n.updated_at || Date.now());
+  if (!vaultName) { el.innerHTML = ''; return; }
+  const active = activeVaultPath ? activeVaultPath : '—';
   el.innerHTML = `
-    <span>${lines} linhas</span>
-    <span>${words} palavras</span>
-    <span>${chars} caracteres</span>
-    <span>Salva ${updated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-  `;
+    <span style="opacity:0.85;">📁 ${esc(vaultName)}</span>
+    <span style="opacity:0.6;">·</span>
+    <span style="opacity:0.7;">${vaultFiles.size} notas · ${vaultAttachments.size} anexos</span>
+    <span style="flex:1;"></span>
+    <span style="opacity:0.6;font-size:10px;">${esc(active)}</span>
+    <button class="obsd-status-btn" onclick="pickVault()" title="Recarregar vault">↻</button>
+    <button class="obsd-status-btn" onclick="closeVault()" title="Fechar vault">×</button>`;
 }
 
-// ── Markdown render Obsidian-like ──
+// ── Busca ──
+function onVaultSearch(q) {
+  vaultSearchQuery = q || '';
+  renderTreeOnly();
+}
+
+// ── Markdown render Obsidian-like (preservado do código anterior) ──
 function renderObsdMarkdown(text) {
   if (!text) return '';
-  // Escape HTML primeiro
-  let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // Escape HTML primeiro, MAS preserva tags HTML que injetamos (wiki-links, imgs)
+  // Estratégia: substituir nossos <a>/<img>/<span class="obsd-wikilink…"> por placeholders, escapar resto, restaurar.
+  const placeholders = [];
+  const PH = (s) => { placeholders.push(s); return `\u0000${placeholders.length - 1}\u0000`; };
+  let html = text
+    .replace(/<a\b[^>]*?>[\s\S]*?<\/a>/g, PH)
+    .replace(/<img\b[^>]*?>/g, PH)
+    .replace(/<span class="obsd-wikilink[^"]*"[^>]*>[\s\S]*?<\/span>/g, PH);
+  html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   // Code blocks ```
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
     `<pre><code class="lang-${lang}">${code.replace(/\n$/, '')}</code></pre>`);
@@ -521,22 +433,24 @@ function renderObsdMarkdown(text) {
   html = html.replace(/^---+$/gm, '<hr>');
   // Blockquotes
   html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-  // Lists (linha por linha — simples)
+  // Lists
   html = html.replace(/^(\s*)[-*] (.+)$/gm, '<li>$2</li>');
   html = html.replace(/^(\s*)\d+\. (.+)$/gm, '<li class="ol">$2</li>');
   html = html.replace(/(<li class="ol">.*?<\/li>(\n|$))+/gs, m => `<ol>${m.replace(/ class="ol"/g, '')}</ol>`);
   html = html.replace(/(<li>(?!<\/).*?<\/li>(\n|$))+/gs, m => `<ul>${m}</ul>`);
-  // Inline: bold, italic, code, links
+  // Inline
   html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
   html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-  // Parágrafos: linhas simples viram <p>
+  // Parágrafos
   html = html.split(/\n{2,}/).map(block => {
     if (/^\s*<(h\d|pre|ul|ol|blockquote|hr)/.test(block)) return block;
     if (!block.trim()) return '';
     return '<p>' + block.replace(/\n/g, '<br>') + '</p>';
   }).join('\n');
+  // Restaura placeholders
+  html = html.replace(/\u0000(\d+)\u0000/g, (_, i) => placeholders[+i] || '');
   return html;
 }
 
@@ -544,31 +458,16 @@ function renderObsdMarkdown(text) {
 document.addEventListener('keydown', e => {
   if (dView !== 'notes' && mView !== 'notes') return;
   const inEditable = e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName);
-  // Ctrl+N: nova nota
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n' && !e.shiftKey) {
-    e.preventDefault();
-    createNote();
+  // Ctrl+W: fecha tab ativa
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'w' && !inEditable) {
+    if (activeVaultPath) { e.preventDefault(); closeVaultTab(activeVaultPath); }
+    return;
   }
-  // Ctrl+W: fecha aba
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'w' && activeNoteId) {
+  // Ctrl+Tab: próxima tab
+  if (e.ctrlKey && e.key === 'Tab' && vaultOpenTabs.length > 1) {
     e.preventDefault();
-    closeTab(activeNoteId);
-    renderNotes();
-  }
-  // Ctrl+E: alterna source/preview/split
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
-    e.preventDefault();
-    const seq = ['source', 'split', 'preview'];
-    const i = seq.indexOf(notesViewMode);
-    setNotesViewMode(seq[(i + 1) % seq.length]);
-  }
-  // Ctrl+Tab / Ctrl+Shift+Tab: navega tabs
-  if ((e.ctrlKey || e.metaKey) && e.key === 'Tab' && notesOpenTabs.length > 1) {
-    e.preventDefault();
-    const i = notesOpenTabs.indexOf(activeNoteId);
-    const next = e.shiftKey
-      ? (i - 1 + notesOpenTabs.length) % notesOpenTabs.length
-      : (i + 1) % notesOpenTabs.length;
-    selectNote(notesOpenTabs[next]);
+    const idx = vaultOpenTabs.indexOf(activeVaultPath);
+    const next = vaultOpenTabs[(idx + 1) % vaultOpenTabs.length];
+    if (next) { activeVaultPath = next; renderNotes(); }
   }
 });

@@ -148,27 +148,21 @@
     <div class="board-area" id="d-board-area">
       <div id="d-kanban-view"><div class="board" id="d-board"></div></div>
       <div class="notes-view obsd" id="d-notes-view">
+        <input type="file" id="vault-picker" webkitdirectory directory multiple style="display:none" onchange="onVaultFolderPicked(event)">
         <div class="obsd-tree-pane">
           <div class="obsd-tree-head">
-            <button class="obsd-icon-btn" onclick="createNote()" title="Nova anotação (Ctrl+N)">
-              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
-            </button>
-            <button class="obsd-icon-btn" onclick="createFolderPrompt()" title="Nova pasta">
-              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+            <button class="obsd-icon-btn" onclick="pickVault()" title="Selecionar vault do Obsidian">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
             </button>
             <button class="obsd-icon-btn" onclick="collapseAllFolders()" title="Recolher tudo">
               <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/></svg>
             </button>
             <div style="flex:1"></div>
-            <select id="d-notes-scope" class="obsd-scope" onchange="setNoteScope(this.value)" title="Escopo">
-              <option value="all">Todas</option>
-              <option value="board">Quadro</option>
-              <option value="global">Globais</option>
-            </select>
+            <button class="obsd-icon-btn" id="vault-close-btn" onclick="closeVault()" title="Fechar vault" style="display:none;">×</button>
           </div>
           <div class="obsd-search-wrap">
             <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <input id="d-notes-search" class="obsd-search" placeholder="Buscar…" oninput="onNotesSearch(this.value)">
+            <input id="d-notes-search" class="obsd-search" placeholder="Buscar arquivo…" oninput="onVaultSearch(this.value)">
           </div>
           <div class="obsd-tree" id="d-notes-tree"></div>
         </div>
@@ -323,18 +317,8 @@
         <div class="m-board" id="m-board" onscroll="onMBoardScroll()"></div>
       </div>
     </div>
-    <div id="m-notes-view" class="obsd-mobile" style="flex:1;overflow:hidden;display:none;flex-direction:column;">
-      <div class="obsd-m-toolbar">
-        <input id="m-notes-search" placeholder="🔍 Buscar…" oninput="onNotesSearch(this.value)">
-        <select id="m-notes-scope" onchange="setNoteScope(this.value)">
-          <option value="all">Todas</option>
-          <option value="board">Quadro</option>
-          <option value="global">Globais</option>
-        </select>
-        <button onclick="createNote()" title="Nova">+</button>
-      </div>
-      <div class="obsd-m-tree" id="m-notes-tree"></div>
-      <div class="obsd-m-editor" id="m-notes-editor" style="display:none;"></div>
+    <div id="m-notes-view" style="flex:1;overflow:hidden;display:none;flex-direction:column;">
+      <div class="obsd-m-empty">📵 Visualizador de vault disponível somente no desktop.</div>
     </div>
     <div id="m-stats-view" style="display:none;" class="m-stats">
       <div class="m-stats-grid" id="m-stats-grid"></div>
