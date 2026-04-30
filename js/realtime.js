@@ -53,6 +53,28 @@ function initRealtime() {
       if (activeBoardId === board.id) activeBoardId = boards[0]?.id || null;
       render();
     })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sticky_notes' }, ({ new: n }) => {
+      if (stickyNotes.find(x => x.id === n.id)) return;
+      stickyNotes.push(n);
+      maxNoteZ = Math.max(maxNoteZ, n.z_index || 0);
+      if (dView === 'notes') renderStickyBoard();
+      else if (mView === 'notes') renderMSticky();
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sticky_notes' }, ({ new: n }) => {
+      if (n.id === editingNoteId || n.id === draggingNoteId || (_stickyDrag && _stickyDrag.id === n.id)) return;
+      const idx = stickyNotes.findIndex(x => x.id === n.id);
+      if (idx === -1) stickyNotes.push(n); else stickyNotes[idx] = { ...stickyNotes[idx], ...n };
+      maxNoteZ = Math.max(maxNoteZ, n.z_index || 0);
+      if (dView === 'notes') renderStickyBoard();
+      else if (mView === 'notes') renderMSticky();
+    })
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'sticky_notes' }, ({ old: n }) => {
+      const had = stickyNotes.some(x => x.id === n.id);
+      if (!had) return;
+      stickyNotes = stickyNotes.filter(x => x.id !== n.id);
+      if (dView === 'notes') renderStickyBoard();
+      else if (mView === 'notes') renderMSticky();
+    })
     .subscribe(status => {
       const dot = document.getElementById(isMobile ? 'm-sync-dot' : 'd-sync-dot');
       if (status === 'SUBSCRIBED') {

@@ -20,11 +20,18 @@ let firedSet = new Set(JSON.parse(localStorage.getItem(firedKey) || '[]'));
 const dueSoonKey = 'fb_duesoon_fired';
 let dueSoonFired = new Set(JSON.parse(localStorage.getItem(dueSoonKey) || '[]'));
 
-// ── ANOTAÇÕES (Obsidian vault viewer — read-only) ──
-let vaultName = '';                 // nome da pasta raiz do vault carregado
-let vaultFiles = new Map();         // path relativo (ex: "Trabalho/Reunião.md") -> { file: File, content: string|null }
-let vaultAttachments = new Map();   // path relativo -> { file: File, url: string|null }
-let activeVaultPath = null;         // path atualmente aberto no preview
-let vaultOpenTabs = [];             // array de paths abertos (read-only multi-tab)
-let vaultExpandedFolders = new Set();
-let vaultSearchQuery = '';
+// ── ANOTAÇÕES (Quadro de Post-its — global, sincronizado via Supabase) ──
+let stickyNotes = [];               // [{id, x, y, w, h, color, content, z_index}]
+let stickyCanvas = { panX: 0, panY: 0, zoom: 1 };
+let draggingNoteId = null, resizingNoteId = null, panningCanvas = false;
+let editingNoteId = null;
+let selectedNoteId = null;
+let maxNoteZ = 0;
+const STICKY_COLORS = [
+  { id: 'yellow', bg: '#fde68a', edge: '#facc15' },
+  { id: 'pink',   bg: '#fbcfe8', edge: '#f472b6' },
+  { id: 'blue',   bg: '#bfdbfe', edge: '#60a5fa' },
+  { id: 'green',  bg: '#bbf7d0', edge: '#4ade80' },
+  { id: 'orange', bg: '#fed7aa', edge: '#fb923c' },
+  { id: 'purple', bg: '#ddd6fe', edge: '#a78bfa' }
+];

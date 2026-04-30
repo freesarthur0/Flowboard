@@ -147,35 +147,34 @@
     </div>
     <div class="board-area" id="d-board-area">
       <div id="d-kanban-view"><div class="board" id="d-board"></div></div>
-      <div class="notes-view obsd" id="d-notes-view">
-        <input type="file" id="vault-picker" webkitdirectory directory multiple style="display:none" onchange="onVaultFolderPicked(event)">
-        <div class="obsd-tree-pane">
-          <div class="obsd-tree-head">
-            <button class="obsd-icon-btn" onclick="pickVault()" title="Selecionar vault do Obsidian">
-              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      <div class="sticky-view" id="d-notes-view">
+        <div class="sticky-toolbar">
+          <button class="sticky-btn-add" onclick="addStickyNote()" title="Nova nota (N)">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nova nota
+          </button>
+          <div class="sticky-toolbar-sep"></div>
+          <div class="sticky-colors" id="sticky-colors"></div>
+          <div class="sticky-toolbar-sep"></div>
+          <div class="sticky-zoom">
+            <button onclick="stickyZoom(-0.1)" title="Diminuir zoom">−</button>
+            <span id="sticky-zoom-label">100%</span>
+            <button onclick="stickyZoom(0.1)" title="Aumentar zoom">+</button>
+            <button onclick="stickyResetView()" title="Centrar e resetar zoom">
+              <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6"/></svg>
             </button>
-            <button class="obsd-icon-btn" onclick="collapseAllFolders()" title="Recolher tudo">
-              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/></svg>
-            </button>
-            <div style="flex:1"></div>
-            <button class="obsd-icon-btn" id="vault-close-btn" onclick="closeVault()" title="Fechar vault" style="display:none;">×</button>
           </div>
-          <div class="obsd-search-wrap">
-            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <input id="d-notes-search" class="obsd-search" placeholder="Buscar arquivo…" oninput="onVaultSearch(this.value)">
+          <div style="flex:1"></div>
+          <span class="sticky-hint">Duplo-clique para editar · Arraste o cabeçalho para mover · Ctrl+Scroll para zoom</span>
+        </div>
+        <div class="sticky-canvas-wrap" id="sticky-canvas-wrap">
+          <div class="sticky-bg" id="sticky-bg"></div>
+          <div class="sticky-canvas" id="sticky-canvas"></div>
+          <div class="sticky-empty" id="sticky-empty" style="display:none">
+            <svg width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            <div class="sticky-empty-title">Quadro vazio</div>
+            <div class="sticky-empty-sub">Clique em <b>+ Nova nota</b> para começar</div>
           </div>
-          <div class="obsd-tree" id="d-notes-tree"></div>
-        </div>
-        <div class="obsd-main-pane">
-          <div class="obsd-tabs" id="d-notes-tabs"></div>
-          <div class="obsd-editor-wrap" id="d-notes-editor"></div>
-          <div class="obsd-statusbar" id="d-notes-statusbar"></div>
-        </div>
-        <div class="obsd-outline-pane">
-          <div class="obsd-outline-head">Outline</div>
-          <div class="obsd-outline" id="d-notes-outline"></div>
-          <div class="obsd-outline-head" style="margin-top:18px;">Tags</div>
-          <div class="obsd-outline-tags" id="d-notes-tagcloud"></div>
         </div>
       </div>
       <div class="timeline-view" id="d-timeline-view"></div>
@@ -318,7 +317,11 @@
       </div>
     </div>
     <div id="m-notes-view" style="flex:1;overflow:hidden;display:none;flex-direction:column;">
-      <div class="obsd-m-empty">📵 Visualizador de vault disponível somente no desktop.</div>
+      <div class="m-sticky-toolbar">
+        <button class="m-sticky-add" onclick="addStickyNote()">+ Nova nota</button>
+        <div class="m-sticky-colors" id="m-sticky-colors"></div>
+      </div>
+      <div class="m-sticky-list" id="m-sticky-list"></div>
     </div>
     <div id="m-stats-view" style="display:none;" class="m-stats">
       <div class="m-stats-grid" id="m-stats-grid"></div>

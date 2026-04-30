@@ -167,3 +167,4 @@ init();
 setTimeout(requestNotifPermission, 2000);
 setTimeout(initRealtime, 1500); // aguarda init() terminar
 scheduleReminderCheck();
+setTimeout(initStickyBoard, 800);

@@ -6,7 +6,7 @@ function renderM() {
   document.getElementById('m-board-title').textContent = ab?.name || 'FlowBoard';
   renderMDrawer();
   if (mView === 'kanban') renderMKanban();
-  else if (mView === 'notes') renderNotes();
+  else if (mView === 'notes') renderMSticky();
   else if (mView === 'stats') renderMStats();
   else if (mView === 'today') renderMToday();
 }
@@ -38,7 +38,7 @@ function setMView(v) {
     const el = document.getElementById(id); if (el) el.style.display = 'none';
   });
   if (v === 'kanban') { document.getElementById('m-kanban-view').style.display = 'flex'; renderM(); }
-  else if (v === 'notes') { document.getElementById('m-notes-view').style.display = 'flex'; renderM(); }
+  else if (v === 'notes') { document.getElementById('m-notes-view').style.display = 'flex'; renderMSticky(); }
   else if (v === 'stats') { document.getElementById('m-stats-view').style.display = 'block'; renderM(); }
   else if (v === 'reminders') { document.getElementById('m-reminders-view').style.display = 'flex'; renderReminders('m'); }
   else if (v === 'today') { document.getElementById('m-today-view').style.display = 'block'; renderM(); }

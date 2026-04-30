@@ -22,7 +22,7 @@ function renderD() {
   document.getElementById('d-board-title').value = ab?.name || '';
   renderDSidebar(); renderDStatsStrip(); renderReminders('d'); renderCal();
   if (dView === 'kanban') renderDKanban();
-  else if (dView === 'notes') renderNotes();
+  else if (dView === 'notes') renderStickyBoard();
   else if (dView === 'stats') renderDStats();
   else if (dView === 'timeline') renderTimeline();
   else if (dView === 'today') renderDToday();
@@ -64,6 +64,7 @@ function setDView(v) {
   if (kanban) kanban.style.display = v === 'kanban' ? 'block' : 'none';
   const notesEl = document.getElementById('d-notes-view');
   if (notesEl) notesEl.classList.toggle('active', v === 'notes');
+  if (v === 'notes') renderStickyBoard();
   const statsEl = document.getElementById('d-stats-view');
   if (statsEl) statsEl.classList.toggle('active', v === 'stats');
   const tlEl = document.getElementById('d-timeline-view');
