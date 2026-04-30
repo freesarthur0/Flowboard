@@ -310,7 +310,8 @@ function depStatusFor(c) {
 
 // ── KEYBOARD SHORTCUTS ──
 document.addEventListener('keydown', e => {
-  const inInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
+  const ae = document.activeElement;
+  const inInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(ae?.tagName) || ae?.isContentEditable;
   if (e.key === 'Escape') {
     // Fecha dialogs customizados primeiro
     if (_dialogResolve) { resolveDialog(null); return; }
