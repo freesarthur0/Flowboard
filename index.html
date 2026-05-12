@@ -11,13 +11,7 @@
 <title>FlowBoard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
-<!-- CSS modular -->
-<link rel="stylesheet" href="css/base.css">
-<link rel="stylesheet" href="css/layout.css">
-<link rel="stylesheet" href="css/mobile.css">
-<link rel="stylesheet" href="css/components.css">
-<link rel="stylesheet" href="css/reminders.css">
-<link rel="stylesheet" href="css/timeline.css">
+
 </head>
 <body>
 
@@ -516,23 +510,53 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/morphdom@2/dist/morphdom-umd.min.js"></script>
 
-<!-- JavaScript — módulos da aplicação (ordem importa!) -->
-<script src="js/ui.js"></script>
-<script src="js/custom-dialogs.js"></script>
-<script src="js/config.js"></script>
-<script src="js/state.js"></script>
-<script src="js/utils.js"></script>
-<script src="js/api.js"></script>
-<script src="js/render-desktop.js"></script>
-<script src="js/render-mobile.js"></script>
-<script src="js/boards.js"></script>
-<script src="js/modal.js"></script>
-<script src="js/search.js"></script>
-<script src="js/reminders.js"></script>
-<script src="js/timeline.js"></script>
-<script src="js/notes.js"></script>
-<script src="js/realtime.js"></script>
-<script src="js/init.js"></script>
+<!-- JavaScript — módulo da aplicação via Vite -->
+<script type="module" src="/src/main.ts"></script>
+
+<!-- MODAL — Login / Cadastro -->
+<div class="modal-bg" id="auth-modal" style="display:none; background:var(--bg); z-index:9999;" onclick="event.stopPropagation()">
+  <div class="modal" style="max-width:360px; margin:auto;">
+    <div class="modal-head" style="justify-content:center; border-bottom:none; margin-bottom:10px;">
+      <div class="modal-htitle" style="font-size:24px; font-weight:800; justify-content:center;">
+        <span style="color:var(--text); letter-spacing:-0.5px;">Flow</span><span style="color:var(--brand);">Board</span>
+      </div>
+    </div>
+    
+    <div id="login-form-view">
+      <div class="frow">
+        <label>E-mail</label>
+        <input id="auth-email" type="email" placeholder="seu@email.com">
+      </div>
+      <div class="frow">
+        <label>Senha</label>
+        <input id="auth-password" type="password" placeholder="••••••••">
+      </div>
+      <button class="mbt mbt-save" style="width:100%; margin-top:20px; justify-content:center; padding:12px;" onclick="handleLogin(document.getElementById('auth-email').value, document.getElementById('auth-password').value)">Entrar</button>
+      <div style="text-align:center; margin-top:16px; font-size:13px; color:var(--text3);">
+        Não tem conta? <span style="color:var(--brand); cursor:pointer; font-weight:600;" onclick="document.getElementById('login-form-view').style.display='none'; document.getElementById('register-form-view').style.display='block';">Criar uma conta</span>
+      </div>
+    </div>
+
+    <div id="register-form-view" style="display:none;">
+      <div class="frow">
+        <label>Nome Completo</label>
+        <input id="auth-reg-name" type="text" placeholder="Ex: João Silva">
+      </div>
+      <div class="frow">
+        <label>E-mail</label>
+        <input id="auth-reg-email" type="email" placeholder="seu@email.com">
+      </div>
+      <div class="frow">
+        <label>Senha</label>
+        <input id="auth-reg-password" type="password" placeholder="Mínimo 6 caracteres">
+      </div>
+      <button class="mbt mbt-save" style="width:100%; margin-top:20px; justify-content:center; padding:12px;" onclick="handleRegister(document.getElementById('auth-reg-email').value, document.getElementById('auth-reg-password').value, document.getElementById('auth-reg-name').value)">Criar Conta</button>
+      <div style="text-align:center; margin-top:16px; font-size:13px; color:var(--text3);">
+        Já tem conta? <span style="color:var(--brand); cursor:pointer; font-weight:600;" onclick="document.getElementById('register-form-view').style.display='none'; document.getElementById('login-form-view').style.display='block';">Fazer Login</span>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
   if ('serviceWorker' in navigator) {

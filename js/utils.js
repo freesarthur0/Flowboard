@@ -1,12 +1,27 @@
 // ── UTILITÁRIOS ──
 const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const initials = n => (n || '?').trim().split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-const isOverdue = due => due && new Date(due) < new Date(new Date().toDateString());
+// Diferença em DIAS DE CALENDÁRIO no fuso local (não por horas), para evitar
+// off-by-one quando "hoje" e "ontem" estão a menos de 24h de diferença.
+function _localDayMs(v) {
+  if (v == null) return NaN;
+  if (typeof v === 'string') {
+    const [y, m, d] = v.slice(0, 10).split('-').map(Number);
+    if (!y || !m || !d) return NaN;
+    return new Date(y, m - 1, d).getTime();
+  }
+  const dt = (v instanceof Date) ? v : new Date(v);
+  return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime();
+}
+function _daysFromToday(v) {
+  // > 0 = no futuro, < 0 = no passado, 0 = hoje
+  return Math.round((_localDayMs(v) - _localDayMs(new Date())) / 86400000);
+}
+const isOverdue = due => due && _daysFromToday(due) < 0;
 const isToday = due => due === new Date().toISOString().slice(0, 10);
 const relDue = due => {
   if (!due) return '';
-  const diff = new Date(due + 'T23:59:59') - new Date();
-  const days = Math.ceil(diff / 86400000);
+  const days = _daysFromToday(due);
   if (days < -1) return `${Math.abs(days)}d atrás`;
   if (days === -1) return 'ontem';
   if (days === 0) return 'hoje';
@@ -15,7 +30,7 @@ const relDue = due => {
 };
 const fmtDate = due => due ? new Date(due + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) : '';
 const relTime = ts => {
-  const d = Math.floor((Date.now() - new Date(ts).getTime()) / 86400000);
+  const d = -_daysFromToday(ts);
   return d === 0 ? 'hoje' : d === 1 ? 'ontem' : `${d}d atrás`;
 };
 

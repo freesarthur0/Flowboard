@@ -1,0 +1,32 @@
+{
+  "name": "flowboard---copia",
+  "version": "1.0.0",
+  "main": "sw.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/freesarthur0/Flowboard.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/freesarthur0/Flowboard/issues"
+  },
+  "homepage": "https://github.com/freesarthur0/Flowboard#readme",
+  "description": "",
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.6.2",
+    "jest": "^30.4.1",
+    "jest-environment-jsdom": "^30.4.1",
+    "ts-jest": "^29.4.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.11"
+  }
+}
